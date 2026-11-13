@@ -1,0 +1,30 @@
+.github/workflows/release.yml
+  h_09d9451df330ee 1-41
+README.md
+  h_09d9451df330ee 12-23,26,30-35
+Resources/Info.plist
+  h_09d9451df330ee 9-10
+Sources/FloatingTodoTimer/FloatingTodoTimerApp.swift
+  h_09d9451df330ee 8-11,14-18
+VERSION
+  h_09d9451df330ee 1
+scripts/build_app.sh
+  h_09d9451df330ee 7,14-15,17,21-23,36-40,45
+scripts/build_dmg.sh
+  h_09d9451df330ee 1-49
+scripts/generate_icon.swift
+  h_09d9451df330ee 1-145
+scripts/release.sh
+  h_09d9451df330ee 1-86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b6d9e89fa01c412108a58f274d3041baeb0bce7e",
+  "prompts": {},
+  "humans": {
+    "h_09d9451df330ee": {
+      "author": "yush <yush2202@gmail.com>"
+    }
+  }
+}
