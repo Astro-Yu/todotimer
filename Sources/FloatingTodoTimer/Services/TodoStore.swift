@@ -201,6 +201,10 @@ public final class TodoStore: ObservableObject {
             for idx in items.indices where idx != targetIndex && items[idx].isRunning {
                 pauseTask(at: idx, now: now)
             }
+            // If the task was marked completed, uncheck it when starting its timer again
+            if items[targetIndex].isCompleted {
+                items[targetIndex].isCompleted = false
+            }
             // If countdown had reached 00:00, reset remaining countdown to configured duration (default 1h)
             if items[targetIndex].remainingDurationSeconds <= 0 {
                 items[targetIndex].remainingDurationSeconds = max(60, items[targetIndex].configuredDurationSeconds)

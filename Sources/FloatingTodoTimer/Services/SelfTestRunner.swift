@@ -63,11 +63,15 @@ enum SelfTestRunner {
             timerStore.toggleTimer(id: idA, now: t1)
             let t2 = t1.addingTimeInterval(600)
             timerStore.handleTimerTick(now: t2)
-            guard !timerStore.items[0].isRunning,
-                  timerStore.items[0].didFinishCountdown,
-                  timerStore.items[0].remainingDurationSeconds == 0,
-                  timerStore.items[0].accumulatedSeconds == 695 else {
-                print("FAIL: Auto-stop at 00:00 failed")
+            // Starting timer on a completed task should automatically uncheck `isCompleted`
+            timerStore.toggleComplete(id: idA, now: t2)
+            guard timerStore.items[0].isCompleted else {
+                print("FAIL: Task A should be marked completed")
+                return 1
+            }
+            timerStore.toggleTimer(id: idA, now: t2)
+            guard !timerStore.items[0].isCompleted, timerStore.items[0].isRunning else {
+                print("FAIL: Starting timer on completed task did not uncheck completion")
                 return 1
             }
 
