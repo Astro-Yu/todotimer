@@ -112,6 +112,12 @@ func renderIcon(size: Int) -> NSBitmapImageRep? {
 
 let rootDir = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
 let outputIcnsURL = rootDir.appendingPathComponent("Resources/AppIcon.icns")
+let outputPngURL = rootDir.appendingPathComponent("Resources/AppIcon.png")
+
+if let previewRep = renderIcon(size: 256),
+   let previewPng = previewRep.representation(using: .png, properties: [:]) {
+    try previewPng.write(to: outputPngURL, options: .atomic)
+}
 
 let chunkSpecs: [(type: String, pixels: Int)] = [
     ("icp4", 16),

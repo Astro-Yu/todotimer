@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="Resources/AppIcon.png" width="112" height="112" alt="FloatingTodoTimer Icon" />
+</p>
+
 # FloatingTodoTimer
 
 화면 한켠에 띄워두고 가장 중요한 할 일(최대 5개)과 타이머만 관리하는 심플한 macOS 플로팅 위젯입니다.
