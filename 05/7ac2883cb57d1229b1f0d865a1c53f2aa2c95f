@@ -1,0 +1,18 @@
+README.md
+  h_09d9451df330ee 8
+Sources/FloatingTodoTimer/Views/WidgetContentView.swift
+  h_09d9451df330ee 14-15,27,74,76-77,82-95,262,264-271,297-302,325-333,335-343,347-383,386,391-393,403-405,643,653-657,659-670,681,704-710,728-733,735-737,739-741,745-746,748-750,753-754,756-761,773,775-816,821
+Sources/FloatingTodoTimer/Window/FloatingPanel.swift
+  h_09d9451df330ee 57,98-128
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "057ac2883cb57d1229b1f0d865a1c53f2aa2c95f",
+  "prompts": {},
+  "humans": {
+    "h_09d9451df330ee": {
+      "author": "yush <yush2202@gmail.com>"
+    }
+  }
+}
