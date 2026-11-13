@@ -1,0 +1,16 @@
+README.md
+  h_09d9451df330ee 1-4
+scripts/generate_icon.swift
+  h_09d9451df330ee 115-120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4cc5874c23f122f7842a6755cce570d07045be82",
+  "prompts": {},
+  "humans": {
+    "h_09d9451df330ee": {
+      "author": "yush <yush2202@gmail.com>"
+    }
+  }
+}
