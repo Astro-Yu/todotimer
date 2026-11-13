@@ -54,6 +54,7 @@ public final class FloatingPanelController: NSObject, NSWindowDelegate {
     private var isProgrammaticFrameChange = false
     private var hoverDelayTask: Task<Void, Never>?
     private var hoverWatchdogTimer: Timer?
+    private var localMouseMonitor: Any?
     /// Anchor top-left point in screen coordinates so rapid expand/collapse animations never drift vertically.
     private var anchoredTopLeft: NSPoint = .zero
 
@@ -94,6 +95,37 @@ public final class FloatingPanelController: NSObject, NSWindowDelegate {
 
         restoreOrDefaultPosition()
         observeExpansionState()
+        installOutsideClickMonitor()
+    }
+
+    deinit {
+        if let monitor = localMouseMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+    }
+
+    private func installOutsideClickMonitor() {
+        localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            guard let self else { return event }
+            if self.store.isEditingText, event.window === self.panel {
+                let hitView = self.panel.contentView?.hitTest(event.locationInWindow)
+                if !Self.isTextInputView(hitView) {
+                    self.releaseKeyFocus()
+                }
+            }
+            return event
+        }
+    }
+
+    private static func isTextInputView(_ view: NSView?) -> Bool {
+        var current = view
+        while let v = current {
+            if v is NSText || v is NSTextField {
+                return true
+            }
+            current = v.superview
+        }
+        return false
     }
 
     public func show() {

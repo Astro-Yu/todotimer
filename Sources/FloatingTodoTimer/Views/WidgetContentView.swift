@@ -11,6 +11,8 @@ public struct WidgetContentView: View {
     @State private var editingTitleDraft: String = ""
     @State private var editingTimeTaskID: UUID? = nil
     @State private var editingMinutesDraft: String = "60"
+    @State private var draggingTaskID: UUID? = nil
+    @State private var dragOffsetY: CGFloat = 0
     @FocusState private var focusedField: FocusField?
 
     private enum FocusField: Hashable {
@@ -22,6 +24,7 @@ public struct WidgetContentView: View {
     // Deep, high-contrast dark blue for clear legibility against gray material backgrounds
     private let deepBlue = Color(red: 0.04, green: 0.23, blue: 0.62)
     private let deepOrange = Color(red: 0.80, green: 0.32, blue: 0.00)
+    private let rowReorderThreshold: CGFloat = 38
 
     public init(
         store: TodoStore,
@@ -68,20 +71,28 @@ public struct WidgetContentView: View {
         .animation(.easeOut(duration: 0.16), value: store.isExpanded)
         .onChange(of: store.isExpanded) { _, expanded in
             if !expanded {
-                // If user was editing a title and moved the mouse out, save any non-empty change before closing
-                if let editingID = editingTaskID {
-                    let trimmed = editingTitleDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !trimmed.isEmpty {
-                        store.updateTitle(id: editingID, newTitle: trimmed)
-                    }
-                }
-                editingTaskID = nil
+                commitActiveTitleEditIfNeeded()
                 editingTimeTaskID = nil
+                draggingTaskID = nil
+                dragOffsetY = 0
                 focusedField = nil
                 onReleaseTextFocus()
             }
         }
-        .onChange(of: focusedField) { _, newValue in
+        .onChange(of: focusedField) { oldValue, newValue in
+            // When focus leaves a task title TextField (e.g., user clicked outside), automatically save the title!
+            if case .editTask(let oldID) = oldValue, newValue != .editTask(oldID) {
+                if editingTaskID == oldID {
+                    commitTitleEdit(for: oldID)
+                }
+            }
+            // When focus leaves a custom minutes TextField, automatically apply the minutes!
+            if case .editMinutes(let oldID) = oldValue, newValue != .editMinutes(oldID) {
+                if editingTimeTaskID == oldID {
+                    commitMinutesEdit(for: oldID)
+                }
+            }
+
             let isEditing = (newValue != nil)
             if store.isEditingText != isEditing {
                 store.isEditingText = isEditing
@@ -248,7 +259,16 @@ public struct WidgetContentView: View {
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 5) {
                     ForEach(Array(store.items.enumerated()), id: \.element.id) { index, item in
+                        let isDraggingThis = (draggingTaskID == item.id)
                         taskRow(index: index, item: item, now: now)
+                            .offset(y: isDraggingThis ? dragOffsetY : 0)
+                            .scaleEffect(isDraggingThis ? 1.015 : 1.0)
+                            .shadow(
+                                color: isDraggingThis ? Color.black.opacity(0.18) : .clear,
+                                radius: isDraggingThis ? 6 : 0,
+                                y: isDraggingThis ? 2 : 0
+                            )
+                            .zIndex(isDraggingThis ? 10 : 0)
                     }
                 }
                 .padding(.horizontal, 8)
@@ -263,8 +283,6 @@ public struct WidgetContentView: View {
         let priority = index + 1
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 5) {
-                priorityBadge(priority: priority, isRunning: item.isRunning)
-
                 // Completion Checkbox
                 Button {
                     store.toggleComplete(id: item.id)
@@ -276,10 +294,12 @@ public struct WidgetContentView: View {
                 .buttonStyle(.plain)
                 .help(item.isCompleted ? "미완료로 변경" : "완료 체크")
 
-                // Title + Accumulated Time sub-label
-                VStack(alignment: .leading, spacing: 1) {
-                    if editingTaskID == item.id {
-                        HStack(spacing: 4) {
+                // Draggable & Editable Region: Priority Badge + Task Title + Accumulated Time
+                HStack(spacing: 5) {
+                    priorityBadge(priority: priority, isRunning: item.isRunning)
+
+                    VStack(alignment: .leading, spacing: 1) {
+                        if editingTaskID == item.id {
                             TextField("할 일 제목", text: $editingTitleDraft)
                                 .textFieldStyle(.plain)
                                 .font(.system(size: 11.5, weight: .semibold))
@@ -302,51 +322,75 @@ public struct WidgetContentView: View {
                                 .onExitCommand {
                                     cancelTitleEdit()
                                 }
+                        } else {
+                            Text(item.title)
+                                .font(.system(size: 11.5, weight: .medium))
+                                .foregroundStyle(item.isCompleted ? .secondary : .primary)
+                                .strikethrough(item.isCompleted, color: .secondary)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
 
-                            Button {
-                                commitTitleEdit(for: item.id)
-                            } label: {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(Color.green)
+                        HStack(spacing: 4) {
+                            Text("누적 \(item.formattedAccumulatedBadge(at: now))")
+                                .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+                                .foregroundStyle(.secondary)
+
+                            if item.didFinishCountdown {
+                                Text("· 타이머 종료")
+                                    .font(.system(size: 9.5, weight: .semibold))
+                                    .foregroundStyle(deepOrange)
                             }
-                            .buttonStyle(.plain)
-                            .help("제목 저장 (Enter)")
                         }
-                    } else {
-                        Text(item.title)
-                            .font(.system(size: 11.5, weight: .medium))
-                            .foregroundStyle(item.isCompleted ? .secondary : .primary)
-                            .strikethrough(item.isCompleted, color: .secondary)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .overlay(
-                                TitleClickOverlay {
-                                    beginTitleEditing(item: item)
-                                }
-                            )
-                            .help("더블클릭 또는 우클릭하여 제목 수정")
                     }
-
-                    HStack(spacing: 4) {
-                        Text("누적 \(item.formattedAccumulatedBadge(at: now))")
-                            .font(.system(size: 9.5, weight: .medium, design: .monospaced))
-                            .foregroundStyle(.secondary)
-
-                        if item.didFinishCountdown {
-                            Text("· 타이머 종료")
-                                .font(.system(size: 9.5, weight: .semibold))
-                                .foregroundStyle(deepOrange)
-                        }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .contentShape(Rectangle())
+                .overlay {
+                    if editingTaskID != item.id {
+                        RowGestureOverlay(
+                            rowStride: rowReorderThreshold,
+                            onActivateEdit: {
+                                beginTitleEditing(item: item)
+                            },
+                            onDragOffsetChanged: { offset in
+                                if draggingTaskID != item.id {
+                                    commitActiveTitleEditIfNeeded()
+                                    draggingTaskID = item.id
+                                }
+                                dragOffsetY = offset
+                            },
+                            onMoveStep: { direction in
+                                guard let currentIndex = store.items.firstIndex(where: { $0.id == item.id }) else {
+                                    return false
+                                }
+                                let targetIndex = currentIndex + direction
+                                guard targetIndex >= 0 && targetIndex < store.items.count else {
+                                    return false
+                                }
+                                withAnimation(.spring(response: 0.20, dampingFraction: 0.82)) {
+                                    store.movePriority(id: item.id, direction: direction)
+                                }
+                                return true
+                            },
+                            onDragEnded: {
+                                withAnimation(.spring(response: 0.18, dampingFraction: 0.85)) {
+                                    draggingTaskID = nil
+                                    dragOffsetY = 0
+                                }
+                            }
+                        )
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .help("드래그하여 우선순위 변경 · 더블클릭 또는 우클릭하여 제목 수정")
 
                 // Priority Up/Down Controls
                 VStack(spacing: 1) {
                     Button {
-                        store.movePriority(id: item.id, direction: -1)
+                        withAnimation(.spring(response: 0.20, dampingFraction: 0.82)) {
+                            store.movePriority(id: item.id, direction: -1)
+                        }
                     } label: {
                         Image(systemName: "chevron.up")
                             .font(.system(size: 7.5, weight: .bold))
@@ -356,7 +400,9 @@ public struct WidgetContentView: View {
                     .disabled(index == 0)
 
                     Button {
-                        store.movePriority(id: item.id, direction: 1)
+                        withAnimation(.spring(response: 0.20, dampingFraction: 0.82)) {
+                            store.movePriority(id: item.id, direction: 1)
+                        }
                     } label: {
                         Image(systemName: "chevron.down")
                             .font(.system(size: 7.5, weight: .bold))
@@ -594,6 +640,7 @@ public struct WidgetContentView: View {
     }
 
     private func beginTitleEditing(item: TodoItem) {
+        commitActiveTitleEditIfNeeded()
         editingTimeTaskID = nil
         editingTaskID = item.id
         editingTitleDraft = item.title
@@ -603,12 +650,24 @@ public struct WidgetContentView: View {
         }
     }
 
+    private func commitActiveTitleEditIfNeeded() {
+        guard let editingID = editingTaskID else { return }
+        commitTitleEdit(for: editingID)
+    }
+
     private func commitTitleEdit(for id: UUID) {
-        store.updateTitle(id: id, newTitle: editingTitleDraft)
-        editingTaskID = nil
-        editingTitleDraft = ""
-        focusedField = nil
-        onReleaseTextFocus()
+        let trimmed = editingTitleDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            store.updateTitle(id: id, newTitle: trimmed)
+        }
+        if editingTaskID == id {
+            editingTaskID = nil
+            editingTitleDraft = ""
+        }
+        if focusedField == .editTask(id) {
+            focusedField = nil
+            onReleaseTextFocus()
+        }
     }
 
     private func cancelTitleEdit() {
@@ -619,7 +678,7 @@ public struct WidgetContentView: View {
     }
 
     private func toggleTimeEditor(for item: TodoItem, now: Date) {
-        editingTaskID = nil
+        commitActiveTitleEditIfNeeded()
         if editingTimeTaskID == item.id {
             editingTimeTaskID = nil
             focusedField = nil
@@ -642,9 +701,13 @@ public struct WidgetContentView: View {
         if let mins = Int(digits), mins > 0 {
             store.setTaskDuration(id: id, minutes: mins)
         }
-        editingTimeTaskID = nil
-        focusedField = nil
-        onReleaseTextFocus()
+        if editingTimeTaskID == id {
+            editingTimeTaskID = nil
+        }
+        if focusedField == .editMinutes(id) {
+            focusedField = nil
+            onReleaseTextFocus()
+        }
     }
 }
 
@@ -662,23 +725,40 @@ private struct TimePresetButtonStyle: ButtonStyle {
     }
 }
 
-/// AppKit NSView overlay that reliably captures both double-click (`clickCount == 2`) and
-/// right-click (`rightMouseDown`) on the task title without being swallowed by NSPanel window dragging.
-private struct TitleClickOverlay: NSViewRepresentable {
+/// AppKit NSView overlay that handles:
+/// 1) Vertical drag-to-reorder priority in screen coordinates (without moving the NSPanel window),
+/// 2) Double-click (`clickCount >= 2`) to edit task title,
+/// 3) Right-click (`rightMouseDown`) to edit task title.
+private struct RowGestureOverlay: NSViewRepresentable {
+    let rowStride: CGFloat
     let onActivateEdit: () -> Void
+    let onDragOffsetChanged: (CGFloat) -> Void
+    let onMoveStep: (Int) -> Bool
+    let onDragEnded: () -> Void
 
-    func makeNSView(context: Context) -> TitleClickNSView {
-        let view = TitleClickNSView()
-        view.onActivateEdit = onActivateEdit
+    func makeNSView(context: Context) -> RowGestureNSView {
+        let view = RowGestureNSView()
+        updateNSView(view, context: context)
         return view
     }
 
-    func updateNSView(_ nsView: TitleClickNSView, context: Context) {
+    func updateNSView(_ nsView: RowGestureNSView, context: Context) {
+        nsView.rowStride = rowStride
         nsView.onActivateEdit = onActivateEdit
+        nsView.onDragOffsetChanged = onDragOffsetChanged
+        nsView.onMoveStep = onMoveStep
+        nsView.onDragEnded = onDragEnded
     }
 
-    final class TitleClickNSView: NSView {
+    final class RowGestureNSView: NSView {
+        var rowStride: CGFloat = 38
         var onActivateEdit: (() -> Void)?
+        var onDragOffsetChanged: ((CGFloat) -> Void)?
+        var onMoveStep: ((Int) -> Bool)?
+        var onDragEnded: (() -> Void)?
+
+        private var anchorScreenY: CGFloat = 0
+        private var isDraggingRow = false
 
         override var mouseDownCanMoveWindow: Bool {
             false
@@ -690,13 +770,55 @@ private struct TitleClickOverlay: NSViewRepresentable {
 
         override func mouseDown(with event: NSEvent) {
             if event.clickCount >= 2 {
+                isDraggingRow = false
                 onActivateEdit?()
-            } else {
-                super.mouseDown(with: event)
+                return
+            }
+            anchorScreenY = NSEvent.mouseLocation.y
+            isDraggingRow = false
+        }
+
+        override func mouseDragged(with event: NSEvent) {
+            let currentScreenY = NSEvent.mouseLocation.y
+            // Screen Y increases upward on macOS; SwiftUI Y increases downward
+            var deltaDown = anchorScreenY - currentScreenY
+
+            if !isDraggingRow && abs(deltaDown) > 3 {
+                isDraggingRow = true
+            }
+
+            guard isDraggingRow else { return }
+
+            let halfStride = rowStride * 0.55
+            while deltaDown > halfStride {
+                if onMoveStep?(1) == true {
+                    anchorScreenY -= rowStride
+                    deltaDown = anchorScreenY - currentScreenY
+                } else {
+                    break
+                }
+            }
+            while deltaDown < -halfStride {
+                if onMoveStep?(-1) == true {
+                    anchorScreenY += rowStride
+                    deltaDown = anchorScreenY - currentScreenY
+                } else {
+                    break
+                }
+            }
+
+            onDragOffsetChanged?(max(-rowStride * 0.6, min(rowStride * 0.6, deltaDown)))
+        }
+
+        override func mouseUp(with event: NSEvent) {
+            if isDraggingRow {
+                isDraggingRow = false
+                onDragEnded?()
             }
         }
 
         override func rightMouseDown(with event: NSEvent) {
+            isDraggingRow = false
             onActivateEdit?()
         }
     }
