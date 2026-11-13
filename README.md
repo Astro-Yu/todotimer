@@ -9,14 +9,27 @@
 - **타이머 & 누적 시간 기록**: 기본 1시간 카운트다운 타이머가 제공되며, 시간을 클릭해 원하는 분(Minute)으로 조절할 수 있습니다. 실제 집중한 누적 시간은 자동으로 합산되며 다음 날 미완료 항목과 함께 자동 이월됩니다.
 - **Obsidian 마크다운 복사**: `Copy MD` 버튼 하나로 오늘의 할 일과 누적 시간을 마크다운(`- [x] 할 일 (1h 15m)`)으로 복사합니다.
 
-## 실행 방법
+## 다운로드 및 설치 (일반 사용자)
 
-```bash
-# 1. 앱 빌드
-./scripts/build_app.sh
-
-# 2. 실행
-open ./build/FloatingTodoTimer.app
-```
+1. **[Releases 페이지](https://github.com/Astro-Yu/todotimer/releases/latest)**에서 최신 `FloatingTodoTimer-vX.Y.Z.dmg` 파일을 다운로드합니다.
+2. `.dmg`를 열고 **`FloatingTodoTimer.app`을 `Applications` 폴더로 드래그**합니다.
+3. 최초 실행 시 *"확인되지 않은 개발자"* 안내가 뜨면 앱 아이콘을 **우클릭 → 열기**하거나 터미널에서 아래 명령어를 1회 실행하세요:
+   ```bash
+   xattr -cr /Applications/FloatingTodoTimer.app
+   ```
 
 > 화면 우측 상단 메뉴바의 타이머 아이콘(⏱)에서 **창 위치 초기화** 및 **종료**를 할 수 있습니다.
+
+## 직접 빌드 및 릴리즈 (개발자)
+
+```bash
+# 로컬 .app 빌드 및 실행
+./scripts/build_app.sh
+open ./build/FloatingTodoTimer.app
+
+# 로컬 .dmg 생성
+./scripts/build_dmg.sh
+
+# 시멘틱 버저닝 릴리즈 배포 (patch / minor / major / X.Y.Z)
+./scripts/release.sh patch
+```
