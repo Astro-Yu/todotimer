@@ -1,0 +1,14 @@
+README.md
+  h_09d9451df330ee 1,3,5,7-10,12,15,18,22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "43353446ea737b5487e3c992946c30efd741880b",
+  "prompts": {},
+  "humans": {
+    "h_09d9451df330ee": {
+      "author": "yush <yush2202@gmail.com>"
+    }
+  }
+}
