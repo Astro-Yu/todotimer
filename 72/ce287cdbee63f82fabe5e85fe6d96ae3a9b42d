@@ -1,0 +1,16 @@
+Sources/FloatingTodoTimer/Services/SelfTestRunner.swift
+  h_09d9451df330ee 66-74
+Sources/FloatingTodoTimer/Services/TodoStore.swift
+  h_09d9451df330ee 204-207
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "72ce287cdbee63f82fabe5e85fe6d96ae3a9b42d",
+  "prompts": {},
+  "humans": {
+    "h_09d9451df330ee": {
+      "author": "yush <yush2202@gmail.com>"
+    }
+  }
+}
