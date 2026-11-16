@@ -3,7 +3,11 @@ import Combine
 import QuartzCore
 import SwiftUI
 
+public protocol WindowDragBlockingView: AnyObject {}
+
 public final class FloatingPanel: NSPanel {
+    var onSendEvent: ((NSEvent) -> Bool)?
+
     public init(contentRect: NSRect) {
         super.init(
             contentRect: contentRect,
@@ -17,7 +21,7 @@ public final class FloatingPanel: NSPanel {
         self.isOpaque = false
         self.backgroundColor = .clear
         self.hasShadow = true
-        self.isMovableByWindowBackground = true
+        self.isMovableByWindowBackground = false
         self.isFloatingPanel = true
         self.becomesKeyOnlyIfNeeded = true
         self.titleVisibility = .hidden
@@ -32,6 +36,13 @@ public final class FloatingPanel: NSPanel {
 
     public override var canBecomeMain: Bool {
         false
+    }
+
+    public override func sendEvent(_ event: NSEvent) {
+        if onSendEvent?(event) == true {
+            return
+        }
+        super.sendEvent(event)
     }
 }
 
@@ -57,6 +68,10 @@ public final class FloatingPanelController: NSObject, NSWindowDelegate {
     private var localMouseMonitor: Any?
     /// Anchor top-left point in screen coordinates so rapid expand/collapse animations never drift vertically.
     private var anchoredTopLeft: NSPoint = .zero
+    public private(set) var isTrackingWindowDrag = false
+    public private(set) var isDraggingWindow = false
+    private var dragStartMouseScreen: NSPoint = .zero
+    private var dragStartFrameOrigin: NSPoint = .zero
 
     public init(store: TodoStore, defaults: UserDefaults = .standard) {
         self.store = store
@@ -67,6 +82,9 @@ public final class FloatingPanelController: NSObject, NSWindowDelegate {
         super.init()
 
         self.panel.delegate = self
+        self.panel.onSendEvent = { [weak self] event in
+            self?.handlePanelSendEvent(event) ?? false
+        }
 
         let rootView = WidgetContentView(
             store: store,
@@ -75,6 +93,15 @@ public final class FloatingPanelController: NSObject, NSWindowDelegate {
             },
             onReleaseTextFocus: { [weak self] in
                 self?.releaseKeyFocus()
+            },
+            onBeginWindowDrag: { [weak self] mouseScreen in
+                self?.beginWindowDragTracking(at: mouseScreen)
+            },
+            onUpdateWindowDrag: { [weak self] mouseScreen in
+                self?.updateWindowDragTracking(to: mouseScreen)
+            },
+            onEndWindowDrag: { [weak self] mouseScreen in
+                self?.endWindowDragTracking(at: mouseScreen)
             }
         )
 
@@ -117,6 +144,50 @@ public final class FloatingPanelController: NSObject, NSWindowDelegate {
         }
     }
 
+    private func handlePanelSendEvent(_ event: NSEvent) -> Bool {
+        switch event.type {
+        case .leftMouseDown:
+            let hitView = panel.contentView?.hitTest(event.locationInWindow)
+            if store.isEditingText, !Self.isTextInputView(hitView) {
+                releaseKeyFocus()
+            }
+            if Self.shouldBlockWindowDrag(for: hitView) {
+                isTrackingWindowDrag = false
+                isDraggingWindow = false
+            } else {
+                beginWindowDragTracking(at: NSEvent.mouseLocation)
+            }
+            return false
+
+        case .leftMouseDragged:
+            if isTrackingWindowDrag {
+                return updateWindowDragTracking(to: NSEvent.mouseLocation)
+            }
+            return false
+
+        case .leftMouseUp:
+            if isTrackingWindowDrag {
+                let wasDragging = endWindowDragTracking(at: NSEvent.mouseLocation)
+                return wasDragging
+            }
+            return false
+
+        default:
+            return false
+        }
+    }
+
+    public static func shouldBlockWindowDrag(for view: NSView?) -> Bool {
+        var current = view
+        while let v = current {
+            if v is WindowDragBlockingView || v is NSText || v is NSTextField {
+                return true
+            }
+            current = v.superview
+        }
+        return false
+    }
+
     private static func isTextInputView(_ view: NSView?) -> Bool {
         var current = view
         while let v = current {
@@ -126,6 +197,79 @@ public final class FloatingPanelController: NSObject, NSWindowDelegate {
             current = v.superview
         }
         return false
+    }
+
+    // MARK: - Explicit Window Dragging (Screen Coordinates)
+
+    public func beginWindowDragTracking(at mouseScreen: NSPoint = NSEvent.mouseLocation) {
+        guard !isDraggingWindow else { return }
+        isTrackingWindowDrag = true
+        isDraggingWindow = false
+        dragStartMouseScreen = mouseScreen
+        dragStartFrameOrigin = panel.frame.origin
+        hoverDelayTask?.cancel()
+        hoverDelayTask = nil
+    }
+
+    @discardableResult
+    public func updateWindowDragTracking(to currentMouseScreen: NSPoint = NSEvent.mouseLocation) -> Bool {
+        guard isTrackingWindowDrag else { return false }
+        let deltaX = currentMouseScreen.x - dragStartMouseScreen.x
+        let deltaY = currentMouseScreen.y - dragStartMouseScreen.y
+
+        if !isDraggingWindow {
+            guard hypot(deltaX, deltaY) >= 2.0 else { return false }
+            isDraggingWindow = true
+            hoverDelayTask?.cancel()
+            hoverDelayTask = nil
+            stopFrameAnimationIfNeeded()
+        }
+
+        let newOrigin = NSPoint(
+            x: dragStartFrameOrigin.x + deltaX,
+            y: dragStartFrameOrigin.y + deltaY
+        )
+        isProgrammaticFrameChange = true
+        panel.setFrameOrigin(newOrigin)
+        anchoredTopLeft = NSPoint(x: panel.frame.minX, y: panel.frame.maxY)
+        isProgrammaticFrameChange = false
+        return true
+    }
+
+    @discardableResult
+    public func endWindowDragTracking(at finalMouseScreen: NSPoint = NSEvent.mouseLocation) -> Bool {
+        guard isTrackingWindowDrag else { return false }
+        let wasDragging = isDraggingWindow
+        isTrackingWindowDrag = false
+        isDraggingWindow = false
+
+        if wasDragging {
+            saveCurrentTopLeftPosition()
+        }
+
+        if store.isHovered {
+            if !panel.frame.insetBy(dx: -2, dy: -2).contains(finalMouseScreen) {
+                collapseFromHoverImmediately()
+            } else {
+                startHoverWatchdog()
+            }
+        } else if panel.frame.insetBy(dx: -2, dy: -2).contains(finalMouseScreen) {
+            handleMouseEntered()
+        }
+
+        return wasDragging
+    }
+
+    private func stopFrameAnimationIfNeeded() {
+        guard isProgrammaticFrameChange else { return }
+        let currentFrame = panel.frame
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0
+            panel.animator().setFrame(currentFrame, display: true)
+        }
+        dragStartFrameOrigin = panel.frame.origin
+        anchoredTopLeft = NSPoint(x: panel.frame.minX, y: panel.frame.maxY)
+        isProgrammaticFrameChange = false
     }
 
     public func show() {
@@ -154,12 +298,15 @@ public final class FloatingPanelController: NSObject, NSWindowDelegate {
     // MARK: - Hover Delay (0.5s) & Smooth Collapse on Mouse Exit
 
     private func handleMouseEntered() {
+        guard !isTrackingWindowDrag, !isDraggingWindow else { return }
         hoverDelayTask?.cancel()
         guard !store.isHovered else { return }
 
         hoverDelayTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(Self.hoverExpandDelaySeconds * 1_000_000_000))
             guard !Task.isCancelled, let self else { return }
+            guard !self.isTrackingWindowDrag, !self.isDraggingWindow else { return }
+            guard (NSEvent.pressedMouseButtons & 1) == 0 else { return }
 
             let mouseLocation = NSEvent.mouseLocation
             if self.panel.frame.insetBy(dx: -2, dy: -2).contains(mouseLocation) {
@@ -174,6 +321,9 @@ public final class FloatingPanelController: NSObject, NSWindowDelegate {
     private func handleMouseExited() {
         hoverDelayTask?.cancel()
         hoverDelayTask = nil
+
+        guard !isTrackingWindowDrag, !isDraggingWindow else { return }
+        guard (NSEvent.pressedMouseButtons & 1) == 0 else { return }
 
         let mouseLocation = NSEvent.mouseLocation
         if panel.frame.insetBy(dx: 1, dy: 1).contains(mouseLocation) {
@@ -192,6 +342,8 @@ public final class FloatingPanelController: NSObject, NSWindowDelegate {
                     self.stopHoverWatchdog()
                     return
                 }
+                guard !self.isTrackingWindowDrag, !self.isDraggingWindow else { return }
+                guard (NSEvent.pressedMouseButtons & 1) == 0 else { return }
                 let mouseLocation = NSEvent.mouseLocation
                 if !self.panel.frame.insetBy(dx: -2, dy: -2).contains(mouseLocation) {
                     self.collapseFromHoverImmediately()

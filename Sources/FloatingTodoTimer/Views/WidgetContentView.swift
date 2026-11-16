@@ -5,6 +5,9 @@ public struct WidgetContentView: View {
     @ObservedObject var store: TodoStore
     var onRequestTextFocus: () -> Void
     var onReleaseTextFocus: () -> Void
+    var onBeginWindowDrag: (NSPoint) -> Void
+    var onUpdateWindowDrag: (NSPoint) -> Void
+    var onEndWindowDrag: (NSPoint) -> Void
 
     @State private var newTaskTitle: String = ""
     @State private var editingTaskID: UUID? = nil
@@ -29,11 +32,17 @@ public struct WidgetContentView: View {
     public init(
         store: TodoStore,
         onRequestTextFocus: @escaping () -> Void = {},
-        onReleaseTextFocus: @escaping () -> Void = {}
+        onReleaseTextFocus: @escaping () -> Void = {},
+        onBeginWindowDrag: @escaping (NSPoint) -> Void = { _ in },
+        onUpdateWindowDrag: @escaping (NSPoint) -> Void = { _ in },
+        onEndWindowDrag: @escaping (NSPoint) -> Void = { _ in }
     ) {
         self.store = store
         self.onRequestTextFocus = onRequestTextFocus
         self.onReleaseTextFocus = onReleaseTextFocus
+        self.onBeginWindowDrag = onBeginWindowDrag
+        self.onUpdateWindowDrag = onUpdateWindowDrag
+        self.onEndWindowDrag = onEndWindowDrag
     }
 
     public var body: some View {
@@ -112,24 +121,35 @@ public struct WidgetContentView: View {
         HStack(spacing: 8) {
             if let display = store.compactDisplayTask {
                 let item = display.item
-                priorityBadge(priority: display.priority, isRunning: item.isRunning)
+                HStack(spacing: 8) {
+                    priorityBadge(priority: display.priority, isRunning: item.isRunning)
 
-                Text(item.title)
-                    .font(.system(size: 12.5, weight: .medium))
-                    .foregroundStyle(item.isCompleted ? .secondary : .primary)
-                    .strikethrough(item.isCompleted, color: .secondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(item.title)
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundStyle(item.isCompleted ? .secondary : .primary)
+                        .strikethrough(item.isCompleted, color: .secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
-                // Remaining countdown time
-                Text(item.formattedRemainingString(at: now))
-                    .font(.system(size: 12.5, weight: .bold, design: .monospaced))
-                    .foregroundStyle(
-                        item.didFinishCountdown
-                            ? deepOrange
-                            : (item.isRunning ? deepBlue : .primary)
+                    // Remaining countdown time
+                    Text(item.formattedRemainingString(at: now))
+                        .font(.system(size: 12.5, weight: .bold, design: .monospaced))
+                        .foregroundStyle(
+                            item.didFinishCountdown
+                                ? deepOrange
+                                : (item.isRunning ? deepBlue : .primary)
+                        )
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .overlay {
+                    WindowDragOverlay(
+                        onBeginDrag: onBeginWindowDrag,
+                        onUpdateDrag: onUpdateWindowDrag,
+                        onEndDrag: onEndWindowDrag
                     )
+                }
 
                 Button {
                     store.toggleTimer(id: item.id)
@@ -146,15 +166,26 @@ public struct WidgetContentView: View {
                 .buttonStyle(.plain)
                 .help(item.isRunning ? "일시정지" : "타이머 시작")
             } else {
-                Image(systemName: "checklist")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 8) {
+                    Image(systemName: "checklist")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.secondary)
 
-                Text("마우스를 0.5초 올려 할 일 추가 (최대 5개)")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    Text("마우스를 0.5초 올려 할 일 추가 (최대 5개)")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .overlay {
+                    WindowDragOverlay(
+                        onBeginDrag: onBeginWindowDrag,
+                        onUpdateDrag: onUpdateWindowDrag,
+                        onEndDrag: onEndWindowDrag
+                    )
+                }
             }
         }
         .padding(.horizontal, 12)
@@ -195,47 +226,60 @@ public struct WidgetContentView: View {
                 Text("· 누적 \(store.formattedTotalAccumulated(at: now))")
                     .font(.system(size: 10.5, weight: .medium, design: .monospaced))
                     .foregroundStyle(.secondary)
+
+                Spacer(minLength: 0)
             }
-
-            Spacer()
-
-            Button {
-                store.copyMarkdownToClipboard(now: now)
-            } label: {
-                HStack(spacing: 3) {
-                    Image(systemName: store.showCopiedFeedback ? "checkmark" : "doc.on.doc")
-                        .font(.system(size: 9.5, weight: .semibold))
-                    Text(store.showCopiedFeedback ? "Copied!" : "Copy MD")
-                        .font(.system(size: 10, weight: .medium))
-                }
-                .foregroundStyle(store.showCopiedFeedback ? Color.green : .primary)
-                .padding(.horizontal, 6.5)
-                .padding(.vertical, 3)
-                .background(
-                    Capsule()
-                        .fill(Color.primary.opacity(0.08))
+            .padding(.leading, 10)
+            .padding(.vertical, 7)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .overlay {
+                WindowDragOverlay(
+                    onBeginDrag: onBeginWindowDrag,
+                    onUpdateDrag: onUpdateWindowDrag,
+                    onEndDrag: onEndWindowDrag
                 )
             }
-            .buttonStyle(.plain)
-            .help("Obsidian 마크다운으로 복사")
 
-            Button {
-                store.togglePinnedExpanded()
-            } label: {
-                Image(systemName: store.isPinnedExpanded ? "pin.fill" : "pin")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(store.isPinnedExpanded ? deepBlue : .secondary)
-                    .frame(width: 22, height: 22)
+            HStack(spacing: 6) {
+                Button {
+                    store.copyMarkdownToClipboard(now: now)
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: store.showCopiedFeedback ? "checkmark" : "doc.on.doc")
+                            .font(.system(size: 9.5, weight: .semibold))
+                        Text(store.showCopiedFeedback ? "Copied!" : "Copy MD")
+                            .font(.system(size: 10, weight: .medium))
+                    }
+                    .foregroundStyle(store.showCopiedFeedback ? Color.green : .primary)
+                    .padding(.horizontal, 6.5)
+                    .padding(.vertical, 3)
                     .background(
-                        Circle()
-                            .fill(store.isPinnedExpanded ? deepBlue.opacity(0.15) : Color.primary.opacity(0.06))
+                        Capsule()
+                            .fill(Color.primary.opacity(0.08))
                     )
+                }
+                .buttonStyle(.plain)
+                .help("Obsidian 마크다운으로 복사")
+
+                Button {
+                    store.togglePinnedExpanded()
+                } label: {
+                    Image(systemName: store.isPinnedExpanded ? "pin.fill" : "pin")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(store.isPinnedExpanded ? deepBlue : .secondary)
+                        .frame(width: 22, height: 22)
+                        .background(
+                            Circle()
+                                .fill(store.isPinnedExpanded ? deepBlue.opacity(0.15) : Color.primary.opacity(0.06))
+                        )
+                }
+                .buttonStyle(.plain)
+                .help("확장 화면 고정 토글 (Opt+Space)")
             }
-            .buttonStyle(.plain)
-            .help("확장 화면 고정 토글 (Opt+Space)")
+            .padding(.trailing, 10)
+            .padding(.vertical, 7)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
     }
 
     @ViewBuilder
@@ -255,6 +299,14 @@ public struct WidgetContentView: View {
                 Spacer()
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .overlay {
+                WindowDragOverlay(
+                    onBeginDrag: onBeginWindowDrag,
+                    onUpdateDrag: onUpdateWindowDrag,
+                    onEndDrag: onEndWindowDrag
+                )
+            }
         } else {
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 5) {
@@ -750,7 +802,7 @@ private struct RowGestureOverlay: NSViewRepresentable {
         nsView.onDragEnded = onDragEnded
     }
 
-    final class RowGestureNSView: NSView {
+    final class RowGestureNSView: NSView, WindowDragBlockingView {
         var rowStride: CGFloat = 38
         var onActivateEdit: (() -> Void)?
         var onDragOffsetChanged: ((CGFloat) -> Void)?
@@ -820,6 +872,52 @@ private struct RowGestureOverlay: NSViewRepresentable {
         override func rightMouseDown(with event: NSEvent) {
             isDraggingRow = false
             onActivateEdit?()
+        }
+    }
+}
+
+/// AppKit NSView overlay for moving the FloatingPanel window in screen coordinates
+/// when dragging the top header bar, compact bar, or empty background regions.
+private struct WindowDragOverlay: NSViewRepresentable {
+    let onBeginDrag: (NSPoint) -> Void
+    let onUpdateDrag: (NSPoint) -> Void
+    let onEndDrag: (NSPoint) -> Void
+
+    func makeNSView(context: Context) -> WindowDragNSView {
+        let view = WindowDragNSView()
+        updateNSView(view, context: context)
+        return view
+    }
+
+    func updateNSView(_ nsView: WindowDragNSView, context: Context) {
+        nsView.onBeginDrag = onBeginDrag
+        nsView.onUpdateDrag = onUpdateDrag
+        nsView.onEndDrag = onEndDrag
+    }
+
+    final class WindowDragNSView: NSView {
+        var onBeginDrag: ((NSPoint) -> Void)?
+        var onUpdateDrag: ((NSPoint) -> Void)?
+        var onEndDrag: ((NSPoint) -> Void)?
+
+        override var mouseDownCanMoveWindow: Bool {
+            false
+        }
+
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+            true
+        }
+
+        override func mouseDown(with event: NSEvent) {
+            onBeginDrag?(NSEvent.mouseLocation)
+        }
+
+        override func mouseDragged(with event: NSEvent) {
+            onUpdateDrag?(NSEvent.mouseLocation)
+        }
+
+        override func mouseUp(with event: NSEvent) {
+            onEndDrag?(NSEvent.mouseLocation)
         }
     }
 }
