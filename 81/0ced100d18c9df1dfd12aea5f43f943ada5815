@@ -1,0 +1,14 @@
+.github/workflows/release.yml
+  h_09d9451df330ee 13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "810ced100d18c9df1dfd12aea5f43f943ada5815",
+  "prompts": {},
+  "humans": {
+    "h_09d9451df330ee": {
+      "author": "yush <yush2202@gmail.com>"
+    }
+  }
+}
