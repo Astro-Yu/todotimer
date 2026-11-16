@@ -113,7 +113,34 @@ enum SelfTestRunner {
                 return 1
             }
 
-            print("PASS: All 5 core specification test suites passed!")
+            // 6. Top bar window dragging in screen coordinates & position persistence
+            let suiteName = "FloatingTodoTimerSelfTest.\(UUID().uuidString)"
+            guard let testDefaults = UserDefaults(suiteName: suiteName) else {
+                print("FAIL: Could not create UserDefaults suite")
+                return 1
+            }
+            defer {
+                testDefaults.removePersistentDomain(forName: suiteName)
+            }
+            let dragController = FloatingPanelController(store: mdStore, defaults: testDefaults)
+            let initialOrigin = dragController.panel.frame.origin
+            let startMouse = NSPoint(x: initialOrigin.x + 80, y: dragController.panel.frame.maxY - 12)
+            let draggedMouse = NSPoint(x: startMouse.x - 120, y: startMouse.y - 65)
+
+            dragController.beginWindowDragTracking(at: startMouse)
+            let didDrag = dragController.updateWindowDragTracking(to: draggedMouse)
+            let didFinishDrag = dragController.endWindowDragTracking(at: draggedMouse)
+
+            let movedOrigin = dragController.panel.frame.origin
+            guard didDrag,
+                  didFinishDrag,
+                  abs(movedOrigin.x - (initialOrigin.x - 120)) < 0.5,
+                  abs(movedOrigin.y - (initialOrigin.y - 65)) < 0.5 else {
+                print("FAIL: Top bar window drag did not move panel frame as expected")
+                return 1
+            }
+
+            print("PASS: All 6 core specification test suites passed!")
             return 0
         } catch {
             print("FAIL: Unexpected error \(error)")

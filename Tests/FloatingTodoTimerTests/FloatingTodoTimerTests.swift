@@ -130,5 +130,26 @@ final class FloatingTodoTimerTests: XCTestCase {
         """
         XCTAssertEqual(markdown, expected)
     }
+
+    func testTopBarWindowDraggingAndPersistence() {
+        let store = TodoStore(storageDirectoryURL: tempDir)
+        let suiteName = "FloatingTodoTimerTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let controller = FloatingPanelController(store: store, defaults: defaults)
+        let startOrigin = controller.panel.frame.origin
+        let startMouse = NSPoint(x: startOrigin.x + 60, y: controller.panel.frame.maxY - 10)
+        let endMouse = NSPoint(x: startMouse.x - 100, y: startMouse.y - 50)
+
+        controller.beginWindowDragTracking(at: startMouse)
+        XCTAssertTrue(controller.updateWindowDragTracking(to: endMouse))
+        XCTAssertTrue(controller.endWindowDragTracking(at: endMouse))
+
+        XCTAssertEqual(controller.panel.frame.origin.x, startOrigin.x - 100, accuracy: 0.5)
+        XCTAssertEqual(controller.panel.frame.origin.y, startOrigin.y - 50, accuracy: 0.5)
+    }
 }
 #endif
