@@ -2,11 +2,18 @@ name: Release DMG
 
 on:
   push:
+    branches:
+      - main
     tags:
       - "v*.*.*"
+  workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency:
+  group: release-${{ github.repository }}
+  cancel-in-progress: false
 
 jobs:
   build-and-release:
@@ -15,27 +22,45 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract semantic version from tag
+      - name: Check version and existing release
         id: version
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "VERSION=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "${VERSION}" > VERSION
-          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${VERSION}" Resources/Info.plist
-
-      - name: Build DMG installer
-        run: ./scripts/build_dmg.sh release
-
-      - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="${GITHUB_REF_NAME}"
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="$(tr -d '[:space:]' < VERSION)"
+          fi
+          TAG="v${VERSION}"
+          echo "VERSION=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "TAG=${TAG}" >> "$GITHUB_OUTPUT"
+
+          if gh release view "${TAG}" >/dev/null 2>&1 && [[ "${GITHUB_EVENT_NAME}" != "workflow_dispatch" ]]; then
+            echo "Release ${TAG} already exists. Skipping."
+            echo "SHOULD_RELEASE=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "${VERSION}" > VERSION
+            /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${VERSION}" Resources/Info.plist
+            echo "SHOULD_RELEASE=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build DMG installer
+        if: steps.version.outputs.SHOULD_RELEASE == 'true'
+        run: ./scripts/build_dmg.sh release
+
+      - name: Publish GitHub Release
+        if: steps.version.outputs.SHOULD_RELEASE == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.version.outputs.TAG }}"
           DMG="build/FloatingTodoTimer-${TAG}.dmg"
           if gh release view "${TAG}" >/dev/null 2>&1; then
             gh release upload "${TAG}" "${DMG}" --clobber
           else
             gh release create "${TAG}" "${DMG}" \
+              --target "${GITHUB_SHA}" \
               --title "FloatingTodoTimer ${TAG}" \
               --generate-notes
           fi
