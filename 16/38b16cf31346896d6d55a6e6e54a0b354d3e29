@@ -1,0 +1,26 @@
+Resources/Info.plist
+  h_09d9451df330ee 20,22
+Sources/FloatingTodoTimer/FloatingTodoTimerApp.swift
+  h_09d9451df330ee 9
+Sources/FloatingTodoTimer/Services/SelfTestRunner.swift
+  h_09d9451df330ee 116-143
+Sources/FloatingTodoTimer/Views/WidgetContentView.swift
+  h_09d9451df330ee 8-10,35-38,43-45,124-150,152,169-172,174-188,230-240,244-256,258-259,261-278,280-281,302-309,805,878-923
+Sources/FloatingTodoTimer/Window/FloatingPanel.swift
+  h_09d9451df330ee 6-7,9-10,24,40-46,71-74,85-87,96-104,147-190,202-274,301,308-309,325-327,345-346
+Tests/FloatingTodoTimerTests/FloatingTodoTimerTests.swift
+  h_09d9451df330ee 133-153
+VERSION
+  h_09d9451df330ee 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1638b16cf31346896d6d55a6e6e54a0b354d3e29",
+  "prompts": {},
+  "humans": {
+    "h_09d9451df330ee": {
+      "author": "yush <yush2202@gmail.com>"
+    }
+  }
+}
